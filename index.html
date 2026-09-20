@@ -15,13 +15,17 @@
 <body>
   <div class="app">
     <header class="app-header">
-      <div class="app-header__brand">
-        <div>
-          <p class="app-header__title">Contador de Caixa</p>
-          <p class="app-header__subtitle">Controle de cédulas, moedas e movimentações</p>
-        </div>
-      </div>
-    </header>
+<div class="app-header__brand">
+<div>
+<p class="app-header__title">Contador de Caixa</p>
+<p class="app-header__subtitle">Controle de cédulas, moedas e movimentações</p>
+</div>
+</div>
+<div class="app-header__user">
+<span id="user-email" class="app-header__email"></span>
+<button type="button" class="btn btn-outline btn-sm" data-action="logout">Sair</button>
+</div>
+</header>
 
     <main class="layout">
       <div class="panels">
@@ -152,6 +156,6 @@
     </div>
   </div>
 
-  <script src="script.js"></script>
+  <script type="module" src="script.js"></script>
 </body>
 </html>
