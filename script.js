@@ -1,4 +1,4 @@
-import { api, ApiError } from './api.js';
+'use strict';
 
 /* ------------------------------------------------------------------------ *
  * Configuração
@@ -19,7 +19,6 @@ const DENOMINATIONS = [
   { value: 0.05, type: 'moeda' },
 ];
 
-const LOGIN_PAGE = '/login.html';
 const QUICK_ADD_STEPS = [1, 5, 10, 20];
 const IMPORT_LINE_PATTERN = /(\d+)\s*x\s*R\$\s*([\d.]+)/i;
 
@@ -35,20 +34,19 @@ const GEAR_ICON = `
  * ------------------------------------------------------------------------ */
 
 const state = {
+  inventory: new Map(DENOMINATIONS.map((d) => [d.value, 0])),
   history: [],
   deletedHistory: [],
 };
 
 let pendingDeleteId = null;
 let pendingCopyValues = null;
-let isSaving = false;
 
 /* ------------------------------------------------------------------------ *
  * DOM cache
  * ------------------------------------------------------------------------ */
 
 const dom = {
-  userEmail: document.getElementById('user-email'),
   inputsGrid: document.getElementById('main-inputs'),
   log: document.getElementById('log'),
   totalNotas: document.getElementById('total-notas'),
@@ -85,38 +83,6 @@ function denominationType(value) {
 
 function isNote(value) {
   return denominationType(value) === 'nota';
-}
-
-function isKnownDenomination(value) {
-  return DENOMINATIONS.some((d) => d.value === value);
-}
-
-function escapeHtml(text) {
-  const element = document.createElement('div');
-  element.textContent = text;
-  return element.innerHTML;
-}
-
-function entryLabel({ direction, source }) {
-  const label = direction > 0 ? 'Entrada' : 'Retirada';
-  return source === 'import' ? `Importação ${label}` : label;
-}
-
-function sumValues(values) {
-  return Object.entries(values).reduce((sum, [value, quantity]) => sum + Number(value) * quantity, 0);
-}
-
-function computeInventory() {
-  const inventory = new Map();
-
-  state.history.forEach(({ direction, values }) => {
-    Object.entries(values).forEach(([rawValue, quantity]) => {
-      const value = Number(rawValue);
-      inventory.set(value, (inventory.get(value) ?? 0) + quantity * direction);
-    });
-  });
-
-  return inventory;
 }
 
 /* ------------------------------------------------------------------------ *
@@ -186,8 +152,8 @@ function renderHistory() {
     item.className = `history-item ${entry.direction > 0 ? 'history-item--in' : 'history-item--out'}`;
     item.innerHTML = `
       <div>
-        <strong class="history-item__label">${entryLabel(entry)}</strong>
-        <span class="history-item__amount">${formatCurrency(sumValues(entry.values))}</span>
+        <strong class="history-item__label">${entry.label}</strong>
+        <span class="history-item__amount">${formatCurrency(entry.notesTotal + entry.coinsTotal)}</span>
       </div>
       <button type="button" class="btn btn-icon" data-action="show-history-details" data-id="${entry.id}" aria-label="Ver detalhes da operação">
         ${GEAR_ICON}
@@ -203,7 +169,7 @@ function renderTotals() {
   let notesTotal = 0;
   let coinsTotal = 0;
 
-  computeInventory().forEach((quantity, value) => {
+  state.inventory.forEach((quantity, value) => {
     if (isNote(value)) notesTotal += quantity * value;
     else coinsTotal += quantity * value;
   });
@@ -269,8 +235,8 @@ function renderDeletedList() {
     item.className = 'deleted-item';
     item.innerHTML = `
       <div>
-        <strong class="deleted-item__label">${entryLabel(entry)}</strong>
-        <span class="deleted-item__amount">${formatCurrency(sumValues(entry.values))}</span>
+        <strong class="deleted-item__label">${entry.label}</strong>
+        <span class="deleted-item__amount">${formatCurrency(entry.notesTotal + entry.coinsTotal)}</span>
       </div>
       <button type="button" class="btn btn-outline" data-action="restore-history-entry" data-id="${entry.id}">
         Recuperar
@@ -286,63 +252,65 @@ function renderDeletedList() {
  * Operações de caixa
  * ------------------------------------------------------------------------ */
 
-async function saveOperation(payload) {
-  if (isSaving) return false;
-  isSaving = true;
-
-  try {
-    state.history.push(await api.createOperation(payload));
-    renderHistory();
-    renderTotals();
-    return true;
-  } finally {
-    isSaving = false;
-  }
-}
-
-function readDenominationInputs() {
-  const values = {};
+function processEntry(direction) {
+  const entry = { values: {}, notesTotal: 0, coinsTotal: 0, direction };
 
   dom.inputsGrid.querySelectorAll('.denomination__input').forEach((input) => {
     const quantity = parseInt(input.value, 10) || 0;
-    if (quantity > 0) values[Number(input.dataset.value)] = quantity;
-  });
+    if (quantity <= 0) return;
 
-  return values;
-}
+    const value = Number(input.dataset.value);
+    entry.values[value] = quantity;
+    state.inventory.set(value, state.inventory.get(value) + quantity * direction);
 
-function resetDenominationInputs() {
-  dom.inputsGrid.querySelectorAll('.denomination__input').forEach((input) => {
+    if (isNote(value)) entry.notesTotal += quantity * value;
+    else entry.coinsTotal += quantity * value;
+
     input.value = '0';
   });
+
+  if (entry.notesTotal === 0 && entry.coinsTotal === 0) return;
+
+  addHistoryEntry(direction > 0 ? 'Entrada' : 'Retirada', entry);
+  renderTotals();
 }
 
-async function processEntry(direction) {
-  const values = readDenominationInputs();
-  if (Object.keys(values).length === 0) return;
-
-  if (await saveOperation({ direction, source: 'manual', values })) resetDenominationInputs();
+function addHistoryEntry(label, entry) {
+  entry.id = Date.now();
+  entry.label = label;
+  state.history.push(entry);
+  renderHistory();
 }
 
-async function deleteHistoryEntry() {
+function deleteHistoryEntry() {
   if (pendingDeleteId === null) return;
 
-  const id = pendingDeleteId;
-  await api.deleteOperation(id);
+  const index = state.history.findIndex((entry) => entry.id === pendingDeleteId);
+  if (index === -1) return;
 
-  const index = state.history.findIndex((entry) => entry.id === id);
-  if (index !== -1) state.deletedHistory.push(...state.history.splice(index, 1));
+  const [entry] = state.history.splice(index, 1);
+  Object.entries(entry.values).forEach(([rawValue, quantity]) => {
+    const value = Number(rawValue);
+    state.inventory.set(value, state.inventory.get(value) - quantity * entry.direction);
+  });
+
+  state.deletedHistory.push(entry);
 
   renderHistory();
   renderTotals();
   closeModal();
 }
 
-async function restoreHistoryEntry(id) {
-  const entry = await api.restoreOperation(id);
+function restoreHistoryEntry(id) {
+  const index = state.deletedHistory.findIndex((entry) => entry.id === id);
+  if (index === -1) return;
 
-  state.deletedHistory = state.deletedHistory.filter((item) => item.id !== id);
-  state.history = [...state.history, entry].sort((a, b) => a.id - b.id);
+  const [entry] = state.deletedHistory.splice(index, 1);
+  Object.entries(entry.values).forEach(([rawValue, quantity]) => {
+    const value = Number(rawValue);
+    state.inventory.set(value, (state.inventory.get(value) || 0) + quantity * entry.direction);
+  });
+  state.history.push(entry);
 
   renderHistory();
   renderTotals();
@@ -351,37 +319,28 @@ async function restoreHistoryEntry(id) {
   if (state.deletedHistory.length === 0) closeModal();
 }
 
-function parseImportText(text) {
-  const values = {};
+function processImport() {
+  const direction = Number(dom.importType.value);
+  const lines = dom.importText.value.split('\n');
+  const entry = { values: {}, notesTotal: 0, coinsTotal: 0, direction };
 
-  text.split('\n').forEach((line) => {
+  lines.forEach((line) => {
     const match = line.match(IMPORT_LINE_PATTERN);
     if (!match) return;
 
     const quantity = parseInt(match[1], 10);
     const value = parseFloat(match[2]);
-    if (quantity <= 0 || !isKnownDenomination(value)) return;
 
-    values[value] = (values[value] ?? 0) + quantity;
+    entry.values[value] = quantity;
+    state.inventory.set(value, (state.inventory.get(value) || 0) + quantity * direction);
+
+    if (isNote(value)) entry.notesTotal += quantity * value;
+    else entry.coinsTotal += quantity * value;
   });
 
-  return values;
-}
-
-async function processImport() {
-  const direction = Number(dom.importType.value);
-  const values = parseImportText(dom.importText.value);
-  if (Object.keys(values).length === 0) return;
-
-  if (await saveOperation({ direction, source: 'import', values })) {
-    dom.importText.value = '';
-    closeModal();
-  }
-}
-
-async function logout() {
-  await api.logout();
-  window.location.replace(LOGIN_PAGE);
+  addHistoryEntry(direction > 0 ? 'Importação Entrada' : 'Importação Retirada', entry);
+  renderTotals();
+  closeModal();
 }
 
 /* ------------------------------------------------------------------------ *
@@ -425,12 +384,12 @@ function closeModal() {
 function showHistoryDetails(id) {
   const entry = state.history.find((item) => item.id === id);
   if (!entry) return;
-  openDetailModal(`${entryLabel(entry)} — detalhes`, describeValues(entry.values), entry.id, entry.values);
+  openDetailModal(`${entry.label} — detalhes`, describeValues(entry.values), entry.id, entry.values);
 }
 
 function showCurrentBalance() {
   const values = {};
-  computeInventory().forEach((quantity, value) => {
+  state.inventory.forEach((quantity, value) => {
     if (quantity !== 0) values[value] = quantity;
   });
   openDetailModal('Saldo atual em caixa', describeValues(values), null, values);
@@ -496,7 +455,10 @@ function showDeletedHistory() {
  * Eventos
  * ------------------------------------------------------------------------ */
 
-async function handleAction(target) {
+document.addEventListener('click', (event) => {
+  const target = event.target.closest('[data-action]');
+  if (!target) return;
+
   switch (target.dataset.action) {
     case 'quick-add': {
       const input = target.closest('.denomination').querySelector('.denomination__input');
@@ -504,13 +466,13 @@ async function handleAction(target) {
       break;
     }
     case 'record':
-      await processEntry(Number(target.dataset.direction));
+      processEntry(Number(target.dataset.direction));
       break;
     case 'open-import':
       openImportModal();
       break;
     case 'process-import':
-      await processImport();
+      processImport();
       break;
     case 'show-balance':
       showCurrentBalance();
@@ -519,13 +481,13 @@ async function handleAction(target) {
       showHistoryDetails(Number(target.dataset.id));
       break;
     case 'delete-history-entry':
-      await deleteHistoryEntry();
+      deleteHistoryEntry();
       break;
     case 'show-deleted':
       showDeletedHistory();
       break;
     case 'restore-history-entry':
-      await restoreHistoryEntry(Number(target.dataset.id));
+      restoreHistoryEntry(Number(target.dataset.id));
       break;
     case 'copy-balance':
       copyBalanceToClipboard();
@@ -533,33 +495,6 @@ async function handleAction(target) {
     case 'close-modal':
       closeModal();
       break;
-    case 'logout':
-      await logout();
-      break;
-  }
-}
-
-function handleError(error) {
-  if (error instanceof ApiError && error.status === 401) {
-    window.location.replace(LOGIN_PAGE);
-    return;
-  }
-
-  console.error(error);
-  openDetailModal(
-    'Não foi possível concluir',
-    `<p class="modal__group-body">${escapeHtml(error.message)}</p>`,
-  );
-}
-
-document.addEventListener('click', async (event) => {
-  const target = event.target.closest('[data-action]');
-  if (!target) return;
-
-  try {
-    await handleAction(target);
-  } catch (error) {
-    handleError(error);
   }
 });
 
@@ -571,19 +506,8 @@ dom.modal.addEventListener('click', (event) => {
  * Inicialização
  * ------------------------------------------------------------------------ */
 
-async function init() {
+function init() {
   buildDenominationsGrid();
-
-  try {
-    const [{ user }, operations] = await Promise.all([api.me(), api.listOperations()]);
-
-    dom.userEmail.textContent = user.email;
-    state.history = operations.filter((operation) => !operation.deletedAt);
-    state.deletedHistory = operations.filter((operation) => operation.deletedAt);
-  } catch (error) {
-    handleError(error);
-  }
-
   renderHistory();
   renderTotals();
 }
