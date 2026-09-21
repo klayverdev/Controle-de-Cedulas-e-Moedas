@@ -1,8 +1,7 @@
 /* ========================================================================
    Contador de Caixa — folha de estilos
    Paleta quase monocromática (preto / cinza / branco). Cor é usada apenas
-   com função: verde para entrada, vermelho para retirada. Sem gradiente,
-   sem glow, sem ícone decorativo.
+   com função: verde para entrada, vermelho para retirada.
    ======================================================================== */
 
 :root {
@@ -131,6 +130,7 @@ button, input, select, textarea {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow-y: auto;            /* se a tela for baixa, o painel rola */
 }
 
 .panel__title {
@@ -169,9 +169,8 @@ button, input, select, textarea {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: calc(var(--gap) * 0.6);
-  overflow-y: auto;
-  padding-right: 2px;
   align-content: start;
+  flex: 0 0 auto;              /* nunca encolhe */
 }
 
 .denomination {
@@ -258,6 +257,7 @@ button, input, select, textarea {
 
 .btn-block {
   width: 100%;
+  flex-shrink: 0;
 }
 
 .btn-primary {
@@ -340,8 +340,8 @@ button, input, select, textarea {
 
 .history {
   overflow-y: auto;
-  flex: 1;
-  min-height: 0;
+  flex: 1 1 0;
+  min-height: 160px;           /* altura mínima garantida */
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -360,6 +360,7 @@ button, input, select, textarea {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-shrink: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 10px 12px;
@@ -607,6 +608,11 @@ button, input, select, textarea {
   resize: vertical;
 }
 
+/* Atributo hidden sempre vence o display definido pelas classes */
+[hidden] {
+  display: none !important;
+}
+
 /* ---------------------------------------------------------------------- *
  * Responsivo
  * ---------------------------------------------------------------------- */
@@ -614,6 +620,7 @@ button, input, select, textarea {
 @media (max-width: 800px) {
   html, body { height: auto; }
   body { overflow: auto; }
-  .panels { grid-template-columns: 1fr; }
+  .panels { grid-template-columns: 1fr; grid-template-rows: none; }
+  .panel { overflow-y: visible; }
   .denominations { grid-template-columns: repeat(2, 1fr); }
 }
