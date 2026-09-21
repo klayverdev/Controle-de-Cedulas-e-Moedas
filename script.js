@@ -41,6 +41,7 @@ const state = {
 
 let pendingDeleteId = null;
 let pendingCopyValues = null;
+let lastEntryId = 0;
 
 /* ------------------------------------------------------------------------ *
  * DOM cache
@@ -78,7 +79,8 @@ function formatDenominationValue(value) {
 }
 
 function denominationType(value) {
-  return DENOMINATIONS.find((d) => d.value === value)?.type;
+  const found = DENOMINATIONS.find((d) => d.value === value);
+  return found ? found.type : undefined;
 }
 
 function isNote(value) {
@@ -275,8 +277,14 @@ function processEntry(direction) {
   renderTotals();
 }
 
+function nextEntryId() {
+  // Garante ids únicos mesmo se duas operações forem salvas no mesmo milissegundo
+  lastEntryId = Math.max(Date.now(), lastEntryId + 1);
+  return lastEntryId;
+}
+
 function addHistoryEntry(label, entry) {
-  entry.id = Date.now();
+  entry.id = nextEntryId();
   entry.label = label;
   state.history.push(entry);
   renderHistory();
@@ -291,7 +299,7 @@ function deleteHistoryEntry() {
   const [entry] = state.history.splice(index, 1);
   Object.entries(entry.values).forEach(([rawValue, quantity]) => {
     const value = Number(rawValue);
-    state.inventory.set(value, state.inventory.get(value) - quantity * entry.direction);
+    state.inventory.set(value, (state.inventory.get(value) || 0) - quantity * entry.direction);
   });
 
   state.deletedHistory.push(entry);
@@ -331,15 +339,18 @@ function processImport() {
     const quantity = parseInt(match[1], 10);
     const value = parseFloat(match[2]);
 
-    entry.values[value] = quantity;
+    entry.values[value] = (entry.values[value] || 0) + quantity;
     state.inventory.set(value, (state.inventory.get(value) || 0) + quantity * direction);
 
     if (isNote(value)) entry.notesTotal += quantity * value;
     else entry.coinsTotal += quantity * value;
   });
 
+  if (entry.notesTotal === 0 && entry.coinsTotal === 0) return;
+
   addHistoryEntry(direction > 0 ? 'Importação Entrada' : 'Importação Retirada', entry);
   renderTotals();
+  dom.importText.value = '';
   closeModal();
 }
 
