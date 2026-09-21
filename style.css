@@ -85,27 +85,7 @@ button, input, select, textarea {
  * ---------------------------------------------------------------------- */
 
 .app-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
   flex-shrink: 0;
-}
-
-.app-header__user {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.app-header__email {
-  max-width: 220px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 0.78rem;
-  color: var(--ink-faint);
 }
 
 .app-header__title {
@@ -345,17 +325,6 @@ button, input, select, textarea {
 .btn-icon:hover {
   background: var(--bg);
   color: var(--ink);
-}
-
-.btn-sm {
-  padding: 6px 12px;
-  font-size: 0.74rem;
-  margin-top: 0;
-}
-
-.btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
 }
 
 .actions {
@@ -623,8 +592,7 @@ button, input, select, textarea {
 }
 
 .select,
-.textarea,
-.input {
+.textarea {
   width: 100%;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -637,54 +605,6 @@ button, input, select, textarea {
 .textarea {
   height: 110px;
   resize: vertical;
-}
-
-/* ---------------------------------------------------------------------- *
- * Autenticação
- * ---------------------------------------------------------------------- */
-
-.auth {
-  margin: auto;
-  width: 360px;
-  max-width: 100%;
-}
-
-.auth__header {
-  margin-bottom: var(--gap);
-}
-
-.form-hint {
-  margin: -6px 0 12px;
-  font-size: 0.74rem;
-  color: var(--ink-faint);
-}
-
-.form-error {
-  margin: 0 0 12px;
-  padding: 9px 10px;
-  border: 1px solid var(--danger-tint-border);
-  border-radius: 6px;
-  background: var(--danger-tint);
-  color: var(--danger-dark);
-  font-size: 0.8rem;
-}
-
-.auth__switch {
-  margin: var(--gap) 0 0;
-  text-align: center;
-  font-size: 0.8rem;
-  color: var(--ink-soft);
-}
-
-.link-button {
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--ink);
-  font: inherit;
-  font-weight: 600;
-  text-decoration: underline;
-  cursor: pointer;
 }
 
 /* ---------------------------------------------------------------------- *
