@@ -297,6 +297,32 @@ button, input, select, textarea {
   color: var(--ink);
 }
 
+.btn:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.photo-status {
+  margin: calc(var(--gap) * 0.5) 0 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+.photo-status[data-kind='success'] {
+  background: var(--success-tint);
+  border-color: var(--success-tint-border);
+  color: var(--success-dark);
+}
+.photo-status[data-kind='error'] {
+  background: var(--danger-tint);
+  border-color: var(--danger-tint-border);
+  color: var(--danger-dark);
+}
+
 .btn-outline.is-copied {
   border-color: var(--success);
   color: var(--success-dark);
