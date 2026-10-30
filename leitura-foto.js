@@ -7,9 +7,8 @@
  * ------------------------------------------------------------------------ */
 
 // Endereço da Worker publicada, sem barra no final.
-// Exemplo: 'https://leitura-cedulas.seu-usuario.workers.dev'
-// Enquanto estiver vazio, o botão "Enviar foto" avisa que falta configurar.
-const PHOTO_WORKER_URL = '';
+// Se ficar vazio, o botão "Enviar foto" avisa que falta configurar.
+const PHOTO_WORKER_URL = 'https://leitura-cedulas.klayverdev.workers.dev';
 
 const PHOTO_MAX_SIDE = 1024;
 const PHOTO_JPEG_QUALITY = 0.85;

@@ -85,16 +85,13 @@ export default {
 
     let resposta;
     try {
+      // Formato do tutorial oficial do modelo: texto em `messages` e a imagem em `image` (data URI).
       resposta = await env.AI.run(MODELO, {
         messages: [
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: PROMPT },
-              { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${paraBase64(bytes)}` } },
-            ],
-          },
+          { role: 'system', content: 'Você conta cédulas e moedas brasileiras em fotos e responde somente com JSON.' },
+          { role: 'user', content: PROMPT },
         ],
+        image: `data:image/jpeg;base64,${paraBase64(bytes)}`,
         max_tokens: 200,
         temperature: 0,
       });
