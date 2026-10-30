@@ -1,0 +1,12 @@
+name = "leitura-cedulas"
+main = "index.js"
+compatibility_date = "2026-10-01"
+
+[ai]
+binding = "AI"
+
+[vars]
+# Endereços do app que podem usar a Worker, separados por vírgula.
+# Acrescente o endereço em que o app está publicado, por exemplo:
+# ALLOWED_ORIGIN = "http://localhost:8080,https://SEU-USUARIO.github.io"
+ALLOWED_ORIGIN = "http://localhost:8080"
