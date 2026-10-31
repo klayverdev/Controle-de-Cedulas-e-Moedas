@@ -33,15 +33,19 @@ test('aceita a resposta do modelo já como objeto', async () => {
   assert.deepEqual(await resposta.json(), { quantidades: { 20: 4 } });
 });
 
-test('envia a imagem em data URI e pede temperatura 0', async () => {
+test('envia a imagem no campo image (data URI), o texto em messages e pede temperatura 0', async () => {
   let entrada;
-  const env = ambiente(async (_modelo, dados) => {
+  let modelo;
+  const env = ambiente(async (nomeDoModelo, dados) => {
+    modelo = nomeDoModelo;
     entrada = dados;
     return { response: '{"1": 1}' };
   });
   await worker.fetch(pedido(), env);
-  const parteImagem = entrada.messages[0].content.find((p) => p.type === 'image_url');
-  assert.match(parteImagem.image_url.url, /^data:image\/jpeg;base64,/);
+  assert.equal(modelo, '@cf/meta/llama-3.2-11b-vision-instruct');
+  assert.match(entrada.image, /^data:image\/jpeg;base64,/);
+  assert.equal(entrada.messages.at(-1).role, 'user');
+  assert.equal(typeof entrada.messages.at(-1).content, 'string');
   assert.equal(entrada.temperature, 0);
 });
 
