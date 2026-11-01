@@ -67,6 +67,12 @@ async function requestRecognition(blob) {
   if (!response.ok) {
     const error = new Error('Falha na leitura.');
     error.status = response.status;
+    // A Worker devolve, junto com o erro, o que o modelo respondeu (nunca a foto).
+    try {
+      error.detail = (await response.json()).detalhe;
+    } catch {
+      error.detail = undefined;
+    }
     throw error;
   }
 
@@ -114,7 +120,8 @@ async function handlePhotoSelected(file) {
     const message = error.status
       ? PHOTO_ERROR_MESSAGES[error.status] || 'Não foi possível ler a foto.'
       : 'Sem conexão com o serviço de leitura.';
-    showPhotoStatus(message, 'error');
+    const detail = error.detail ? ` Resposta do serviço: ${error.detail}` : '';
+    showPhotoStatus(`${message}${detail}`, 'error');
   } finally {
     setPhotoBusy(false);
   }

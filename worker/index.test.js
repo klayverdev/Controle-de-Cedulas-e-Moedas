@@ -33,7 +33,7 @@ test('aceita a resposta do modelo já como objeto', async () => {
   assert.deepEqual(await resposta.json(), { quantidades: { 20: 4 } });
 });
 
-test('envia a imagem no campo image (data URI), o texto em messages e pede temperatura 0', async () => {
+test('primeiro formato: imagem no campo image (data URI), texto em messages e temperatura 0', async () => {
   let entrada;
   let modelo;
   const env = ambiente(async (nomeDoModelo, dados) => {
@@ -80,26 +80,80 @@ test('400 para corpo vazio, que não é JPEG ou maior que 1,5 MB', async () => {
   assert.equal((await worker.fetch(pedido({ corpo: grande }), env)).status, 400);
 });
 
-test('422 quando o modelo não devolve nenhuma quantidade válida', async () => {
-  const env = ambiente(async () => ({ response: 'Não consigo ver nada.' }));
+test('422 quando nenhum formato devolve quantidade válida, e mostra o que o modelo respondeu', async () => {
+  let chamadas = 0;
+  const env = ambiente(async () => {
+    chamadas += 1;
+    return { response: chamadas === 1 ? { 1: 0, 50: 0 } : 'Não consigo ver nada.' };
+  });
   const resposta = await worker.fetch(pedido(), env);
   assert.equal(resposta.status, 422);
+  const corpo = await resposta.json();
+  assert.equal(corpo.erro, 'Não consegui ler a foto.');
+  assert.match(corpo.detalhe, /formato 1: .*"50":0/);
+  assert.match(corpo.detalhe, /formato 2: Não consigo ver nada\./);
+  assert.equal(chamadas, 3);
 });
 
-test('429 quando o limite gratuito do dia acaba', async () => {
+test('tenta o formato seguinte quando o primeiro dá erro', async () => {
+  const formatos = [];
+  const env = ambiente(async (_modelo, dados) => {
+    formatos.push(dados);
+    if (formatos.length === 1) throw new Error('3030: Unable to add image when there are no user-supplied messages');
+    return { response: '{"20": 3}' };
+  });
+  const resposta = await worker.fetch(pedido(), env);
+  assert.equal(resposta.status, 200);
+  assert.deepEqual(await resposta.json(), { quantidades: { 20: 3 } });
+  assert.equal(formatos.length, 2);
+  assert.ok(formatos[0].image, 'o formato 1 usa o campo image');
+  const parteImagem = formatos[1].messages[0].content.find((p) => p.type === 'image_url');
+  assert.match(parteImagem.image_url.url, /^data:image\/jpeg;base64,/);
+});
+
+test('tenta o formato seguinte quando o primeiro responde só zeros', async () => {
+  let chamadas = 0;
   const env = ambiente(async () => {
+    chamadas += 1;
+    return { response: chamadas === 1 ? { 1: 0, 50: 0 } : { 1: 4, 0.5: 5 } };
+  });
+  const resposta = await worker.fetch(pedido(), env);
+  assert.equal(resposta.status, 200);
+  assert.deepEqual(await resposta.json(), { quantidades: { 1: 4, 0.5: 5 } });
+  assert.equal(chamadas, 2);
+});
+
+test('429 imediato quando o limite gratuito do dia acaba, sem tentar outros formatos', async () => {
+  let chamadas = 0;
+  const env = ambiente(async () => {
+    chamadas += 1;
     throw new Error('4006: you have used up your daily free allocation of 10,000 neurons');
   });
   const resposta = await worker.fetch(pedido(), env);
   assert.equal(resposta.status, 429);
+  assert.equal(chamadas, 1);
 });
 
-test('502 para outras falhas do modelo', async () => {
+test('502 com detalhe quando todos os formatos dão erro', async () => {
+  let chamadas = 0;
   const env = ambiente(async () => {
-    throw new Error('falha interna qualquer');
+    chamadas += 1;
+    throw new Error(`falha interna ${chamadas}`);
   });
   const resposta = await worker.fetch(pedido(), env);
   assert.equal(resposta.status, 502);
+  const corpo = await resposta.json();
+  assert.match(corpo.detalhe, /formato 1: falha interna 1/);
+  assert.match(corpo.detalhe, /formato 3: falha interna 3/);
+  assert.equal(chamadas, 3);
+});
+
+test('o detalhe nunca inclui a imagem e é limitado em tamanho', async () => {
+  const env = ambiente(async () => ({ response: 'x'.repeat(5000) }));
+  const resposta = await worker.fetch(pedido(), env);
+  const corpo = await resposta.json();
+  assert.ok(corpo.detalhe.length <= 403);
+  assert.doesNotMatch(corpo.detalhe, /base64/);
 });
 
 test('404 para outras rotas e 405 para métodos diferentes de POST', async () => {

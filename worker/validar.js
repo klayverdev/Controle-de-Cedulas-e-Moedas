@@ -33,9 +33,11 @@ export function extrairQuantidades(texto) {
 
     const chave = String(numero);
     if (!DENOMINACOES.includes(chave)) continue;
-    if (!Number.isInteger(quantidade) || quantidade < 1 || quantidade > MAX_QUANTIDADE) continue;
+    // O modelo às vezes devolve a quantidade como texto ("5"): aceita só dígitos.
+    const valor = typeof quantidade === 'string' && /^\s*\d+\s*$/.test(quantidade) ? Number(quantidade) : quantidade;
+    if (!Number.isInteger(valor) || valor < 1 || valor > MAX_QUANTIDADE) continue;
 
-    resultado[chave] = quantidade;
+    resultado[chave] = valor;
   }
   return resultado;
 }
