@@ -3,14 +3,26 @@
 
 import { extrairQuantidades, DENOMINACOES } from './validar.js';
 
-const MODELO = '@cf/meta/llama-3.2-11b-vision-instruct';
 const MAX_BYTES = 1.5 * 1024 * 1024;
 
-const PROMPT = `Você está contando dinheiro brasileiro em uma foto.
-Responda SOMENTE com um objeto JSON, sem nenhum outro texto.
-As chaves devem ser exatamente estes valores em reais: ${DENOMINACOES.map((d) => `"${d}"`).join(', ')}.
-Cada valor é a quantidade inteira de cédulas ou moedas daquele valor que aparecem na foto. Use 0 quando não houver.
-Não conte itens cortados, escondidos ou duvidosos. Exemplo: {"50": 2, "20": 0, "0.5": 3}`;
+// Modelos de visão, do preferido para o último recurso. Testes diretos mostraram que todos
+// enxergam a imagem quando ela vai dentro da mensagem (`image_url`). O formato com o campo
+// `image` solto é ignorado por alguns deles e levaria o modelo a inventar números.
+const MODELOS = [
+  { id: '@cf/mistralai/mistral-small-3.1-24b-instruct', rotulo: 'mistral-small-3.1', maxTokens: 300 },
+  { id: '@cf/meta/llama-4-scout-17b-16e-instruct', rotulo: 'llama-4-scout', maxTokens: 300 },
+  // O Gemma 4 raciocina antes de responder; com pouco espaço ele devolve texto vazio.
+  { id: '@cf/google/gemma-4-26b-a4b-it', rotulo: 'gemma-4', maxTokens: 1500 },
+  { id: '@cf/meta/llama-3.2-11b-vision-instruct', rotulo: 'llama-3.2-vision', maxTokens: 300 },
+];
+
+const PROMPT = `Você é um caixa de loja contando dinheiro brasileiro (reais) em uma foto.
+Conte TODAS as cédulas e moedas que aparecem inteiras na foto, uma a uma. Ignore reflexos e itens cortados nas bordas.
+Como identificar:
+- Moedas: R$ 1 é dourada com o centro prateado; R$ 0,50 é prateada; R$ 0,25 é cor de bronze e maior; R$ 0,10 é cor de bronze e menor; R$ 0,05 é cor de cobre.
+- Cédulas: R$ 2 azul-acinzentada; R$ 5 roxa; R$ 10 vermelha; R$ 20 amarela; R$ 50 marrom; R$ 100 azul; R$ 200 cinza.
+Responda SOMENTE com um objeto JSON, sem nenhum outro texto, com estas chaves (valor em reais): ${DENOMINACOES.map((d) => `"${d}"`).join(', ')}.
+Cada valor é o número inteiro de unidades daquele tipo que aparecem na foto (0 se não houver nenhuma).`;
 
 function origensPermitidas(env) {
   return String(env.ALLOWED_ORIGIN || '')
@@ -60,54 +72,20 @@ function recortar(texto, limite = 400) {
   return limpo.length > limite ? `${limpo.slice(0, limite)}...` : limpo;
 }
 
-// Formatos de entrada, do mais provável para o menos provável de funcionar.
-function formatosDeEntrada(imagem, prompt = PROMPT) {
-  const comum = { max_tokens: 250, temperature: 0 };
-  return [
-    // 1. Tutorial oficial: texto em `messages` e a imagem no campo `image`.
-    {
-      messages: [
-        { role: 'system', content: 'Você conta cédulas e moedas brasileiras em fotos e responde somente com JSON.' },
-        { role: 'user', content: prompt },
-      ],
-      image: imagem,
-      ...comum,
-    },
-    // 2. Estilo OpenAI: a imagem dentro do conteúdo da mensagem.
-    {
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: prompt },
-            { type: 'image_url', image_url: { url: imagem } },
-          ],
-        },
-      ],
-      ...comum,
-    },
-    // 3. Prompt simples com a imagem.
-    { prompt, image: imagem, ...comum },
-  ];
-}
-
-// Quando nenhum formato devolve quantidades, pergunta ao modelo o que ele vê na foto.
-// Serve para saber se o problema é a imagem não chegar ou o modelo não saber contar.
-async function diagnosticar(env, imagem, indiceFormato) {
-  const perguntas = [
-    ['descrição', 'Descreva em português tudo o que aparece nesta foto.'],
-    ['lista', 'Liste cada moeda e cada cédula que aparece nesta foto, uma por linha, com o valor em reais de cada uma. Se não houver nenhuma, diga "nenhuma".'],
-  ];
-  const partes = [];
-  for (const [rotulo, pergunta] of perguntas) {
-    try {
-      const resposta = await env.AI.run(MODELO, formatosDeEntrada(imagem, pergunta)[indiceFormato]);
-      partes.push(`${rotulo}: ${textoDaResposta(resposta) || '(vazio)'}`);
-    } catch (erro) {
-      partes.push(`${rotulo}: erro ${String(erro?.message || erro)}`);
-    }
-  }
-  return partes.join(' | ');
+function entradaDaImagem(imagem, maxTokens) {
+  return {
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: PROMPT },
+          { type: 'image_url', image_url: { url: imagem } },
+        ],
+      },
+    ],
+    max_tokens: maxTokens,
+    temperature: 0,
+  };
 }
 
 function erroDeLimite(erro) {
@@ -138,36 +116,42 @@ export default {
       return json({ erro: 'Imagem inválida ou grande demais.' }, 400, origem);
     }
 
-    // O Workers AI aceita a imagem em formatos diferentes e nem todos funcionam com este modelo.
-    // Tenta um por vez e para no primeiro que devolver quantidades válidas.
+    // Tenta um modelo por vez e para no primeiro que devolver quantidades válidas.
+    // Com MODO_COMPARACAO=1 roda todos e devolve o que cada um respondeu (só para avaliar modelos).
+    const comparar = env.MODO_COMPARACAO === '1';
     const imagem = `data:image/jpeg;base64,${paraBase64(bytes)}`;
-    const respostas = [];
-    const falhas = [];
-    let primeiroQueRespondeu = -1;
+    const relatorio = [];
+    let vencedor = null;
+    let responderam = 0;
 
-    for (const [indice, entrada] of formatosDeEntrada(imagem).entries()) {
+    for (const modelo of MODELOS) {
       try {
-        const resposta = await env.AI.run(MODELO, entrada);
+        const resposta = await env.AI.run(modelo.id, entradaDaImagem(imagem, modelo.maxTokens));
+        responderam += 1;
         const texto = textoDaResposta(resposta);
         const quantidades = extrairQuantidades(texto);
-        if (Object.keys(quantidades).length > 0) return json({ quantidades }, 200, origem);
-        if (primeiroQueRespondeu === -1) primeiroQueRespondeu = indice;
-        respostas.push(`formato ${indice + 1}: ${texto || '(vazio)'}`);
+        const valido = Object.keys(quantidades).length > 0;
+        relatorio.push(`${modelo.rotulo}: ${valido ? JSON.stringify(quantidades) : texto || '(vazio)'}`);
+        if (valido && !vencedor) {
+          vencedor = quantidades;
+          if (!comparar) break;
+        }
       } catch (erro) {
         // Nunca registrar a foto: só a mensagem de erro.
         const mensagem = String(erro?.message || erro);
-        console.error(`Falha no Workers AI (formato ${indice + 1}):`, mensagem);
+        console.error(`Falha no Workers AI (${modelo.rotulo}):`, mensagem);
         if (erroDeLimite(erro)) return json({ erro: 'Limite gratuito do dia atingido.' }, 429, origem);
-        falhas.push(`formato ${indice + 1}: ${mensagem}`);
+        relatorio.push(`${modelo.rotulo}: erro ${mensagem}`);
       }
     }
 
-    // Se algum formato chegou a responder, o modelo "leu" mas não achou nada válido.
-    if (respostas.length > 0) {
-      const resumo = `${respostas.length} formato(s) responderam sem quantidades (${recortar(respostas[0], 140)})`;
-      const visto = await diagnosticar(env, imagem, primeiroQueRespondeu);
-      return json({ erro: 'Não consegui ler a foto.', detalhe: recortar(`${resumo} | ${visto}`, 900) }, 422, origem);
+    if (comparar) {
+      return json({ erro: 'Modo de comparação ligado.', detalhe: recortar(relatorio.join(' | '), 1500) }, 422, origem);
     }
-    return json({ erro: 'Falha ao chamar o modelo.', detalhe: recortar(falhas.join(' | ')) }, 502, origem);
+    if (vencedor) return json({ quantidades: vencedor }, 200, origem);
+    if (responderam > 0) {
+      return json({ erro: 'Não consegui ler a foto.', detalhe: recortar(relatorio.join(' | '), 1200) }, 422, origem);
+    }
+    return json({ erro: 'Falha ao chamar o modelo.', detalhe: recortar(relatorio.join(' | '), 1200) }, 502, origem);
   },
 };

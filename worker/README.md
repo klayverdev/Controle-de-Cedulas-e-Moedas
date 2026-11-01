@@ -24,6 +24,16 @@ O último comando mostra o endereço da Worker, algo como `https://leitura-cedul
 
 **Licença do modelo (uma vez só).** Segundo a documentação da Cloudflare, o Llama 3.2 Vision exige aceitar a [licença da Meta](https://github.com/meta-llama/llama-models/blob/main/models/llama3%5F2/LICENSE) e a [política de uso aceitável](https://github.com/meta-llama/llama-models/blob/main/models/llama3%5F2/USE%5FPOLICY.md). O aceite é feito enviando uma primeira chamada com `"prompt": "agree"` ao modelo `@cf/meta/llama-3.2-11b-vision-instruct`, na sua conta. Enquanto isso não for feito, o app mostra "o serviço de leitura falhou".
 
+## Modelos usados
+
+O Worker tenta, nesta ordem, `mistral-small-3.1-24b-instruct`, `llama-4-scout-17b-16e-instruct`, `gemma-4-26b-a4b-it` e `llama-3.2-11b-vision-instruct`, e usa o primeiro que devolver quantidades válidas. A imagem vai sempre dentro da mensagem (`image_url`): em testes diretos, o formato com o campo `image` solto foi ignorado por alguns modelos, que passaram a inventar números. Cada foto gasta algumas dezenas de Neurons do limite gratuito diário.
+
+A ordem fica em `MODELOS`, no `index.js`.
+
+### Modo de comparação
+
+Para avaliar os modelos com uma foto sua, defina a variável `MODO_COMPARACAO` como `1` (em `wrangler.toml`, na seção `[vars]`, ou no painel da Cloudflare). Com ela ligada, o Worker roda **todos** os modelos e o app mostra o que cada um respondeu, em vez de preencher os campos. Deixe desligada (ausente ou `0`) no uso normal, porque gasta o limite diário bem mais rápido.
+
 ## Testar a precisão antes de usar
 
 Reúna de 8 a 10 fotos JPG (até 1,5 MB cada) em condições diferentes: luz boa e ruim, notas sobrepostas, moedas misturadas. Crie um `gabarito.json` com o que realmente há em cada uma:
