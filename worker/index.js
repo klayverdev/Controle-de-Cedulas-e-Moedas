@@ -61,14 +61,14 @@ function recortar(texto, limite = 400) {
 }
 
 // Formatos de entrada, do mais provável para o menos provável de funcionar.
-function formatosDeEntrada(imagem) {
-  const comum = { max_tokens: 200, temperature: 0 };
+function formatosDeEntrada(imagem, prompt = PROMPT) {
+  const comum = { max_tokens: 250, temperature: 0 };
   return [
     // 1. Tutorial oficial: texto em `messages` e a imagem no campo `image`.
     {
       messages: [
         { role: 'system', content: 'Você conta cédulas e moedas brasileiras em fotos e responde somente com JSON.' },
-        { role: 'user', content: PROMPT },
+        { role: 'user', content: prompt },
       ],
       image: imagem,
       ...comum,
@@ -79,7 +79,7 @@ function formatosDeEntrada(imagem) {
         {
           role: 'user',
           content: [
-            { type: 'text', text: PROMPT },
+            { type: 'text', text: prompt },
             { type: 'image_url', image_url: { url: imagem } },
           ],
         },
@@ -87,8 +87,27 @@ function formatosDeEntrada(imagem) {
       ...comum,
     },
     // 3. Prompt simples com a imagem.
-    { prompt: PROMPT, image: imagem, ...comum },
+    { prompt, image: imagem, ...comum },
   ];
+}
+
+// Quando nenhum formato devolve quantidades, pergunta ao modelo o que ele vê na foto.
+// Serve para saber se o problema é a imagem não chegar ou o modelo não saber contar.
+async function diagnosticar(env, imagem, indiceFormato) {
+  const perguntas = [
+    ['descrição', 'Descreva em português tudo o que aparece nesta foto.'],
+    ['lista', 'Liste cada moeda e cada cédula que aparece nesta foto, uma por linha, com o valor em reais de cada uma. Se não houver nenhuma, diga "nenhuma".'],
+  ];
+  const partes = [];
+  for (const [rotulo, pergunta] of perguntas) {
+    try {
+      const resposta = await env.AI.run(MODELO, formatosDeEntrada(imagem, pergunta)[indiceFormato]);
+      partes.push(`${rotulo}: ${textoDaResposta(resposta) || '(vazio)'}`);
+    } catch (erro) {
+      partes.push(`${rotulo}: erro ${String(erro?.message || erro)}`);
+    }
+  }
+  return partes.join(' | ');
 }
 
 function erroDeLimite(erro) {
@@ -124,6 +143,7 @@ export default {
     const imagem = `data:image/jpeg;base64,${paraBase64(bytes)}`;
     const respostas = [];
     const falhas = [];
+    let primeiroQueRespondeu = -1;
 
     for (const [indice, entrada] of formatosDeEntrada(imagem).entries()) {
       try {
@@ -131,6 +151,7 @@ export default {
         const texto = textoDaResposta(resposta);
         const quantidades = extrairQuantidades(texto);
         if (Object.keys(quantidades).length > 0) return json({ quantidades }, 200, origem);
+        if (primeiroQueRespondeu === -1) primeiroQueRespondeu = indice;
         respostas.push(`formato ${indice + 1}: ${texto || '(vazio)'}`);
       } catch (erro) {
         // Nunca registrar a foto: só a mensagem de erro.
@@ -143,7 +164,9 @@ export default {
 
     // Se algum formato chegou a responder, o modelo "leu" mas não achou nada válido.
     if (respostas.length > 0) {
-      return json({ erro: 'Não consegui ler a foto.', detalhe: recortar(respostas.join(' | ')) }, 422, origem);
+      const resumo = `${respostas.length} formato(s) responderam sem quantidades (${recortar(respostas[0], 140)})`;
+      const visto = await diagnosticar(env, imagem, primeiroQueRespondeu);
+      return json({ erro: 'Não consegui ler a foto.', detalhe: recortar(`${resumo} | ${visto}`, 900) }, 422, origem);
     }
     return json({ erro: 'Falha ao chamar o modelo.', detalhe: recortar(falhas.join(' | ')) }, 502, origem);
   },

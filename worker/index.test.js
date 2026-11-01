@@ -90,9 +90,29 @@ test('422 quando nenhum formato devolve quantidade válida, e mostra o que o mod
   assert.equal(resposta.status, 422);
   const corpo = await resposta.json();
   assert.equal(corpo.erro, 'Não consegui ler a foto.');
-  assert.match(corpo.detalhe, /formato 1: .*"50":0/);
-  assert.match(corpo.detalhe, /formato 2: Não consigo ver nada\./);
-  assert.equal(chamadas, 3);
+  assert.match(corpo.detalhe, /3 formato\(s\) responderam sem quantidades \(formato 1: .*"50":0/);
+  // 3 formatos + 2 perguntas de diagnóstico (descrição e lista)
+  assert.match(corpo.detalhe, /descrição: Não consigo ver nada\./);
+  assert.match(corpo.detalhe, /lista: Não consigo ver nada\./);
+  assert.equal(chamadas, 5);
+});
+
+test('o diagnóstico pergunta o que há na foto usando o formato que respondeu e não derruba a resposta se falhar', async () => {
+  const entradas = [];
+  const env = ambiente(async (_modelo, dados) => {
+    entradas.push(dados);
+    if (entradas.length === 4) throw new Error('falha só no diagnóstico');
+    return { response: entradas.length <= 3 ? { 1: 0 } : 'Vejo moedas.' };
+  });
+  const resposta = await worker.fetch(pedido(), env);
+  assert.equal(resposta.status, 422);
+  const corpo = await resposta.json();
+  assert.match(corpo.detalhe, /descrição: erro falha só no diagnóstico/);
+  assert.match(corpo.detalhe, /lista: Vejo moedas\./);
+  // O diagnóstico reutiliza o formato 1 (campo image) e troca só a pergunta.
+  assert.ok(entradas[3].image && entradas[4].image);
+  assert.match(entradas[3].messages.at(-1).content, /Descreva/);
+  assert.match(entradas[4].messages.at(-1).content, /Liste cada moeda/);
 });
 
 test('tenta o formato seguinte quando o primeiro dá erro', async () => {
@@ -152,7 +172,7 @@ test('o detalhe nunca inclui a imagem e é limitado em tamanho', async () => {
   const env = ambiente(async () => ({ response: 'x'.repeat(5000) }));
   const resposta = await worker.fetch(pedido(), env);
   const corpo = await resposta.json();
-  assert.ok(corpo.detalhe.length <= 403);
+  assert.ok(corpo.detalhe.length <= 903);
   assert.doesNotMatch(corpo.detalhe, /base64/);
 });
 
