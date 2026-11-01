@@ -21,9 +21,13 @@ test('normaliza chaves com zeros extras, vírgula e prefixo R$', () => {
   assert.deepEqual(extrairQuantidades(texto), { 0.5: 1, 50: 2, 20: 3, 0.25: 4 });
 });
 
-test('descarta valores negativos, decimais, texto e acima do teto', () => {
-  const texto = '{"50": -1, "20": 2.5, "10": "3", "5": 201, "2": 200}';
+test('descarta valores negativos, decimais, texto não numérico e acima do teto', () => {
+  const texto = '{"50": -1, "20": 2.5, "10": "três", "5": 201, "2": 200, "1": "1.5"}';
   assert.deepEqual(extrairQuantidades(texto), { 2: 200 });
+});
+
+test('aceita quantidades escritas como texto de dígitos', () => {
+  assert.deepEqual(extrairQuantidades('{"50": "2", "0.5": " 3 ", "20": "0"}'), { 50: 2, 0.5: 3 });
 });
 
 test('devolve vazio para resposta sem JSON, vazia ou inválida', () => {

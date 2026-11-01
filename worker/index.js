@@ -55,6 +55,42 @@ function textoDaResposta(resposta) {
   return typeof bruto === 'string' ? bruto : '';
 }
 
+function recortar(texto, limite = 400) {
+  const limpo = String(texto).replace(/\s+/g, ' ').trim();
+  return limpo.length > limite ? `${limpo.slice(0, limite)}...` : limpo;
+}
+
+// Formatos de entrada, do mais provável para o menos provável de funcionar.
+function formatosDeEntrada(imagem) {
+  const comum = { max_tokens: 200, temperature: 0 };
+  return [
+    // 1. Tutorial oficial: texto em `messages` e a imagem no campo `image`.
+    {
+      messages: [
+        { role: 'system', content: 'Você conta cédulas e moedas brasileiras em fotos e responde somente com JSON.' },
+        { role: 'user', content: PROMPT },
+      ],
+      image: imagem,
+      ...comum,
+    },
+    // 2. Estilo OpenAI: a imagem dentro do conteúdo da mensagem.
+    {
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: PROMPT },
+            { type: 'image_url', image_url: { url: imagem } },
+          ],
+        },
+      ],
+      ...comum,
+    },
+    // 3. Prompt simples com a imagem.
+    { prompt: PROMPT, image: imagem, ...comum },
+  ];
+}
+
 function erroDeLimite(erro) {
   return /4006|daily|allocation|neurons|rate limit|too many requests/i.test(String(erro?.message || erro));
 }
@@ -83,29 +119,32 @@ export default {
       return json({ erro: 'Imagem inválida ou grande demais.' }, 400, origem);
     }
 
-    let resposta;
-    try {
-      // Formato do tutorial oficial do modelo: texto em `messages` e a imagem em `image` (data URI).
-      resposta = await env.AI.run(MODELO, {
-        messages: [
-          { role: 'system', content: 'Você conta cédulas e moedas brasileiras em fotos e responde somente com JSON.' },
-          { role: 'user', content: PROMPT },
-        ],
-        image: `data:image/jpeg;base64,${paraBase64(bytes)}`,
-        max_tokens: 200,
-        temperature: 0,
-      });
-    } catch (erro) {
-      // Nunca registrar a foto: só a mensagem de erro.
-      console.error('Falha no Workers AI:', String(erro?.message || erro));
-      if (erroDeLimite(erro)) return json({ erro: 'Limite gratuito do dia atingido.' }, 429, origem);
-      return json({ erro: 'Falha ao chamar o modelo.' }, 502, origem);
+    // O Workers AI aceita a imagem em formatos diferentes e nem todos funcionam com este modelo.
+    // Tenta um por vez e para no primeiro que devolver quantidades válidas.
+    const imagem = `data:image/jpeg;base64,${paraBase64(bytes)}`;
+    const respostas = [];
+    const falhas = [];
+
+    for (const [indice, entrada] of formatosDeEntrada(imagem).entries()) {
+      try {
+        const resposta = await env.AI.run(MODELO, entrada);
+        const texto = textoDaResposta(resposta);
+        const quantidades = extrairQuantidades(texto);
+        if (Object.keys(quantidades).length > 0) return json({ quantidades }, 200, origem);
+        respostas.push(`formato ${indice + 1}: ${texto || '(vazio)'}`);
+      } catch (erro) {
+        // Nunca registrar a foto: só a mensagem de erro.
+        const mensagem = String(erro?.message || erro);
+        console.error(`Falha no Workers AI (formato ${indice + 1}):`, mensagem);
+        if (erroDeLimite(erro)) return json({ erro: 'Limite gratuito do dia atingido.' }, 429, origem);
+        falhas.push(`formato ${indice + 1}: ${mensagem}`);
+      }
     }
 
-    const quantidades = extrairQuantidades(textoDaResposta(resposta));
-    if (Object.keys(quantidades).length === 0) {
-      return json({ erro: 'Não consegui ler a foto.' }, 422, origem);
+    // Se algum formato chegou a responder, o modelo "leu" mas não achou nada válido.
+    if (respostas.length > 0) {
+      return json({ erro: 'Não consegui ler a foto.', detalhe: recortar(respostas.join(' | ')) }, 422, origem);
     }
-    return json({ quantidades }, 200, origem);
+    return json({ erro: 'Falha ao chamar o modelo.', detalhe: recortar(falhas.join(' | ')) }, 502, origem);
   },
 };
