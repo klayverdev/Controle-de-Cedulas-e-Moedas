@@ -7,7 +7,6 @@ const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x4
 const MISTRAL = '@cf/mistralai/mistral-small-3.1-24b-instruct';
 const SCOUT = '@cf/meta/llama-4-scout-17b-16e-instruct';
 const GEMMA = '@cf/google/gemma-4-26b-a4b-it';
-const LLAMA32 = '@cf/meta/llama-3.2-11b-vision-instruct';
 
 function ambiente(aiRun, extra = {}) {
   return { ALLOWED_ORIGIN: `${ORIGEM}, https://exemplo.github.io`, AI: { run: aiRun }, ...extra };
@@ -67,19 +66,18 @@ test('o prompt não puxa para zero: sem exemplo pronto e sem pedir para ignorar 
   assert.doesNotMatch(prompt, /duvidosos/);
 });
 
-test('passa para o próximo modelo quando o anterior dá erro, responde vazio ou só zeros', async () => {
+test('passa para o próximo modelo quando o anterior dá erro ou só responde zeros', async () => {
   const usados = [];
   const env = ambiente(async (modelo) => {
     usados.push(modelo);
     if (modelo === MISTRAL) throw new Error('falha qualquer');
     if (modelo === SCOUT) return { response: { 1: 0, 50: 0 } };
-    if (modelo === GEMMA) return { response: '' };
     return { response: '{"1": 4, "0.5": 5}' };
   });
   const resposta = await worker.fetch(pedido(), env);
   assert.equal(resposta.status, 200);
   assert.deepEqual(await resposta.json(), { quantidades: { 1: 4, 0.5: 5 } });
-  assert.deepEqual(usados, [MISTRAL, SCOUT, GEMMA, LLAMA32]);
+  assert.deepEqual(usados, [MISTRAL, SCOUT, GEMMA]);
 });
 
 test('para no primeiro modelo que acerta e não gasta os outros', async () => {
@@ -113,7 +111,6 @@ test('422 quando nenhum modelo devolve quantidade válida, mostrando o que cada 
   assert.match(corpo.detalhe, /mistral-small-3\.1: .*"50":0/);
   assert.match(corpo.detalhe, /llama-4-scout: Não consigo ver nada\./);
   assert.match(corpo.detalhe, /gemma-4: Não consigo ver nada\./);
-  assert.match(corpo.detalhe, /llama-3\.2-vision: Não consigo ver nada\./);
 });
 
 test('502 com detalhe quando todos os modelos dão erro', async () => {
@@ -126,8 +123,8 @@ test('502 com detalhe quando todos os modelos dão erro', async () => {
   assert.equal(resposta.status, 502);
   const corpo = await resposta.json();
   assert.match(corpo.detalhe, /mistral-small-3\.1: erro falha interna 1/);
-  assert.match(corpo.detalhe, /llama-3\.2-vision: erro falha interna 4/);
-  assert.equal(chamadas, 4);
+  assert.match(corpo.detalhe, /gemma-4: erro falha interna 3/);
+  assert.equal(chamadas, 3);
 });
 
 test('modo de comparação: roda todos os modelos e mostra a resposta de cada um, mesmo havendo acerto', async () => {
@@ -145,7 +142,7 @@ test('modo de comparação: roda todos os modelos e mostra a resposta de cada um
   assert.equal(corpo.erro, 'Modo de comparação ligado.');
   assert.match(corpo.detalhe, /mistral-small-3\.1: \{"1":4,"0\.5":5\}/);
   assert.match(corpo.detalhe, /gemma-4: texto sem json/);
-  assert.equal(usados.length, 4);
+  assert.equal(usados.length, 3);
 });
 
 test('o modo de comparação só liga com o valor exato "1"', async () => {

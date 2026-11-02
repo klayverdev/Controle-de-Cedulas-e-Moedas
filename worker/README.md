@@ -22,11 +22,11 @@ O último comando mostra o endereço da Worker, algo como `https://leitura-cedul
 1. **Permitir o seu app.** Em `wrangler.toml`, acrescente o endereço onde o app está publicado em `ALLOWED_ORIGIN` (separados por vírgula, sem barra no final) e publique de novo. Sem isso a Worker responde 403 ao app.
 2. **Informar o endereço no app.** Em `leitura-foto.js`, preencha `PHOTO_WORKER_URL` com o endereço da Worker.
 
-**Licença do modelo (uma vez só).** Segundo a documentação da Cloudflare, o Llama 3.2 Vision exige aceitar a [licença da Meta](https://github.com/meta-llama/llama-models/blob/main/models/llama3%5F2/LICENSE) e a [política de uso aceitável](https://github.com/meta-llama/llama-models/blob/main/models/llama3%5F2/USE%5FPOLICY.md). O aceite é feito enviando uma primeira chamada com `"prompt": "agree"` ao modelo `@cf/meta/llama-3.2-11b-vision-instruct`, na sua conta. Enquanto isso não for feito, o app mostra "o serviço de leitura falhou".
+**Licença dos modelos Meta (uma vez só).** Alguns modelos exigem aceitar a licença do fabricante na primeira chamada (por exemplo, o Llama 3.2 Vision, via `"prompt": "agree"`). Se um modelo da lista recusar por isso, o Worker passa para o próximo e o motivo aparece no detalhe do erro.
 
 ## Modelos usados
 
-O Worker tenta, nesta ordem, `mistral-small-3.1-24b-instruct`, `llama-4-scout-17b-16e-instruct`, `gemma-4-26b-a4b-it` e `llama-3.2-11b-vision-instruct`, e usa o primeiro que devolver quantidades válidas. A imagem vai sempre dentro da mensagem (`image_url`): em testes diretos, o formato com o campo `image` solto foi ignorado por alguns modelos, que passaram a inventar números. Cada foto gasta algumas dezenas de Neurons do limite gratuito diário.
+O Worker tenta, nesta ordem, `mistral-small-3.1-24b-instruct`, `llama-4-scout-17b-16e-instruct` e `gemma-4-26b-a4b-it`, e usa o primeiro que devolver quantidades válidas. O `llama-3.2-11b-vision-instruct` foi retirado: numa foto real de gaveta de caixa ele só devolveu zeros. A imagem vai sempre dentro da mensagem (`image_url`): em testes diretos, o formato com o campo `image` solto foi ignorado por alguns modelos, que passaram a inventar números. Cada foto gasta algumas dezenas de Neurons do limite gratuito diário.
 
 A ordem fica em `MODELOS`, no `index.js`.
 

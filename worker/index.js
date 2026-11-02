@@ -5,15 +5,16 @@ import { extrairQuantidades, DENOMINACOES } from './validar.js';
 
 const MAX_BYTES = 1.5 * 1024 * 1024;
 
-// Modelos de visão, do preferido para o último recurso. Testes diretos mostraram que todos
+// Modelos de visão, do preferido para o último recurso. Testes diretos mostraram que eles
 // enxergam a imagem quando ela vai dentro da mensagem (`image_url`). O formato com o campo
 // `image` solto é ignorado por alguns deles e levaria o modelo a inventar números.
+// Numa foto real de gaveta de caixa, o Mistral foi o que mais se aproximou; o Llama 3.2 Vision
+// só devolveu zeros e foi retirado da lista.
 const MODELOS = [
   { id: '@cf/mistralai/mistral-small-3.1-24b-instruct', rotulo: 'mistral-small-3.1', maxTokens: 300 },
   { id: '@cf/meta/llama-4-scout-17b-16e-instruct', rotulo: 'llama-4-scout', maxTokens: 300 },
-  // O Gemma 4 raciocina antes de responder; com pouco espaço ele devolve texto vazio.
-  { id: '@cf/google/gemma-4-26b-a4b-it', rotulo: 'gemma-4', maxTokens: 1500 },
-  { id: '@cf/meta/llama-3.2-11b-vision-instruct', rotulo: 'llama-3.2-vision', maxTokens: 300 },
+  // O Gemma 4 raciocina antes de responder e gasta muitos tokens: fica só como último recurso.
+  { id: '@cf/google/gemma-4-26b-a4b-it', rotulo: 'gemma-4', maxTokens: 3000 },
 ];
 
 const PROMPT = `Você é um caixa de loja contando dinheiro brasileiro (reais) em uma foto.
