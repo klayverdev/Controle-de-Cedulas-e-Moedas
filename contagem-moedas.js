@@ -15,11 +15,12 @@
   const OPENCV_URL_PADRAO = 'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.10.0-release.1/dist/opencv.js';
 
   const LADO_MAX_ANALISE = 1600; // px do lado maior usado na análise
-  const SAT_PRATA = 60; // saturação (0-255) abaixo disso = metal prateado
-  const SAT_BORDA_PRATA = 65;
-  const MATIZ_COBRE_MAX = 15; // matiz (0-179) até aqui = cor de cobre (R$ 0,05)
-  const CORTE_TAMANHO = 0.85; // fração do raio da moeda de R$ 1 que separa "pequena" de "grande"
-  const RAIO_R1_RELATIVO = 0.0244; // raio da moeda de R$ 1 / lado maior, se não houver R$ 1 na foto
+  const DIF_BICOLOR = 30; // borda tão mais saturada que o centro (0-255) = moeda de R$ 1 (dourada por fora, prateada por dentro)
+  const SAT_BORDA_PRATA = 65; // borda com saturação (0-255) abaixo disso = metal prateado
+  const MATIZ_COBRE_MAX = 14.5; // matiz (0-179) até aqui = cor de cobre (R$ 0,05)
+  const CORTE_TAMANHO = 0.78; // fração do raio da moeda de R$ 1 que separa "pequena" de "grande"
+  const MIOLO_MAX = 0.70; // prateada com raio abaixo dessa fração do raio da R$ 1 = miolo de uma R$ 1
+  const RAIO_R1_RELATIVO = 0.0276; // raio da moeda de R$ 1 / lado maior, se não houver R$ 1 na foto
 
   function mediana(valores) {
     const ordenados = valores.slice().sort((a, b) => a - b);
@@ -34,8 +35,8 @@
    */
   function classificarMoedas(circulos, ladoMaior) {
     const tipos = circulos.map((c) => {
-      if (c.satCentro < SAT_PRATA && c.satBorda < SAT_BORDA_PRATA) return 'prata';
-      if (c.satCentro < SAT_PRATA) return 'bicolor';
+      if (c.satBorda - c.satCentro > DIF_BICOLOR) return 'bicolor';
+      if (c.satBorda < SAT_BORDA_PRATA) return 'prata';
       return c.matizBorda <= MATIZ_COBRE_MAX ? 'cobre' : 'dourada';
     });
 
@@ -43,12 +44,43 @@
     const referencia = raiosR1.length ? mediana(raiosR1) : RAIO_R1_RELATIVO * ladoMaior;
     const corte = referencia * CORTE_TAMANHO;
 
+    // O raio medido de cada moeda tem ruído; moedas vizinhas costumam ser do mesmo tipo.
+    // Para as douradas, usa-se o raio mediano das douradas ao redor (a própria inclusa).
+    const raioSuavizado = (c, i) => {
+      if (c.x === undefined) return c.r;
+      const raios = circulos
+        .filter((o, j) => tipos[j] === 'dourada' && (j === i || Math.hypot(c.x - o.x, c.y - o.y) <= c.r * 2.4))
+        .map((o) => o.r);
+      return mediana(raios);
+    };
+
     const valores = circulos.map((c, i) => {
-      const grande = c.r >= corte;
+      const grande = raioSuavizado(c, i) >= corte;
       if (tipos[i] === 'bicolor') return 1;
       if (tipos[i] === 'cobre') return 0.05;
       if (tipos[i] === 'dourada') return grande ? 0.25 : 0.1;
       return null; // prata: decidida abaixo
+    });
+
+    // Uma moeda dourada ou de cobre cercada quase só por moedas de outro valor (uma cobre mais
+    // clara no meio das douradas, por exemplo) assume o valor da pilha.
+    const doPrimeiroPasso = valores.slice();
+    circulos.forEach((c, i) => {
+      if (c.x === undefined || (tipos[i] !== 'dourada' && tipos[i] !== 'cobre')) return;
+      const votos = {};
+      let total = 0;
+      let prateadasPerto = 0;
+      circulos.forEach((o, j) => {
+        if (j === i || Math.hypot(c.x - o.x, c.y - o.y) > c.r * 3) return;
+        if (tipos[j] === 'prata') prateadasPerto += 1;
+        if (tipos[j] !== 'dourada' && tipos[j] !== 'cobre') return;
+        votos[doPrimeiroPasso[j]] = (votos[doPrimeiroPasso[j]] || 0) + 1;
+        total += 1;
+      });
+      const [melhor, quantos] = Object.entries(votos).sort((a, b) => b[1] - a[1])[0] || [];
+      if (total >= 2 && quantos / total >= 0.8 && Number(melhor) !== doPrimeiroPasso[i]) valores[i] = Number(melhor);
+      // Prateada enferrujada: parece dourada, mas só tem moedas prateadas em volta.
+      if (total === 0 && prateadasPerto >= 3) valores[i] = 0.5;
     });
 
     // Moedas prateadas: costumam ser R$ 0,50, mas uma prateada solta no meio de um monte de
@@ -67,13 +99,29 @@
       if (total > prateadasPerto) {
         valores[i] = Number(Object.keys(votos).sort((a, b) => votos[b] - votos[a])[0]);
       } else {
-        valores[i] = c.r >= corte ? 0.5 : 0.05;
+        valores[i] = 0.5; // prateada sem vizinhas de outro valor
       }
     });
 
+    // Círculo prateado bem menor que qualquer moeda real: é só o miolo de uma R$ 1 cujo contorno
+    // externo o detector não achou. Só dá para saber com a régua de uma R$ 1 na foto.
+    if (raiosR1.length) {
+      circulos.forEach((c, i) => {
+        if (tipos[i] === 'prata' && c.r < referencia * MIOLO_MAX) valores[i] = 1;
+      });
+    }
+
     const quantidades = { 1: 0, 0.5: 0, 0.25: 0, 0.1: 0, 0.05: 0 };
     valores.forEach((v) => { quantidades[v] += 1; });
-    return { quantidades, referencia };
+    return { quantidades, referencia, valores };
+  }
+
+  // O Hough às vezes acha um círculo falso dentro de uma moeda (o miolo prateado da de R$ 1, por
+  // exemplo). Descarta quem tem o centro bem dentro de outro círculo maior.
+  function removerContidos(circulos) {
+    return circulos.filter(
+      (c) => !circulos.some((o) => o !== c && o.r > c.r && Math.hypot(o.x - c.x, o.y - c.y) < o.r * 0.6),
+    );
   }
 
   // ---- Visão computacional (precisa do OpenCV.js) ---------------------------------
@@ -159,7 +207,7 @@
       const achados = hough(cv, cinza, Math.round(tipico * 0.7), Math.round(tipico * 1.4), Math.round(tipico * 1.25));
 
       const hsv = hsvMat.data;
-      return achados.map((c) => ({
+      return removerContidos(achados).map((c) => ({
         x: c.x,
         y: c.y,
         r: c.r,
@@ -175,8 +223,8 @@
   /** Conta as moedas de uma imagem já desenhada (ImageData). Devolve { quantidades, total, circulos }. */
   function contarMoedasDaImagem(cv, imageData) {
     const circulos = detectarCirculos(cv, imageData);
-    const { quantidades } = classificarMoedas(circulos, Math.max(imageData.width, imageData.height));
-    return { quantidades, total: circulos.length, circulos };
+    const { quantidades, valores } = classificarMoedas(circulos, Math.max(imageData.width, imageData.height));
+    return { quantidades, total: circulos.length, circulos, valores };
   }
 
   /**
@@ -197,7 +245,7 @@
     return resultado.total > 0 ? resultado : null;
   }
 
-  const api = { classificarMoedas, detectarCirculos, contarMoedasDaImagem, contarMoedasDoArquivo };
+  const api = { classificarMoedas, removerContidos, detectarCirculos, contarMoedasDaImagem, contarMoedasDoArquivo };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else raiz.ContagemMoedas = api;
 })(typeof window !== 'undefined' ? window : globalThis);
