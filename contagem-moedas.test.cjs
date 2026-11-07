@@ -36,6 +36,16 @@ test('prata pequena (menor que uma de R$ 0,50) é contada como R$ 0,05', () => {
   assert.deepEqual(quantidades, { 1: 1, 0.5: 1, 0.25: 0, 0.1: 0, 0.05: 1 });
 });
 
+test('prateada solta no meio de um monte dourado vale o mesmo que as vizinhas', () => {
+  const na = (c, x, y) => ({ ...c, x, y });
+  const lista = [
+    na(prata(36), 0, 0), na(prata(36), 80, 0), na(prata(36), 40, 70), // monte de R$ 0,50
+    na(dourada(37), 1000, 0), na(dourada(37), 1075, 0), na(prata(36), 1040, 65), // prateada entre as douradas
+    na(bicolor(39), 3000, 0),
+  ];
+  assert.deepEqual(classificarMoedas(lista, 1600).quantidades, { 1: 1, 0.5: 3, 0.25: 3, 0.1: 0, 0.05: 0 });
+});
+
 test('lista vazia não quebra', () => {
   assert.deepEqual(classificarMoedas([], 1600).quantidades, { 1: 0, 0.5: 0, 0.25: 0, 0.1: 0, 0.05: 0 });
 });
@@ -59,9 +69,8 @@ test('foto real: acha todas as moedas e acerta os tipos', { timeout: 120000 }, a
   const imageData = { width: foto.width, height: foto.height, data: new Uint8ClampedArray(foto.data) };
   const { total, quantidades } = contarMoedasDaImagem(cv, imageData);
 
-  // Contagem do dono da gaveta: 19 / 23 / 23 / 29 / 19 (113). Conferência visual: 114 moedas.
-  // As diferenças vêm de 2 moedas prateadas soltas nos montes dourados (idênticas a R$ 0,50 na cor
-  // e no tamanho) e de 1 moeda de R$ 1 a mais.
+  // Contagem do dono da gaveta: 19 / 23 / 23 / 29 / 19 (113). Conferência visual: 114 moedas,
+  // sendo a única diferença 1 moeda de R$ 1 a mais (20 visíveis na foto).
   assert.ok(Math.abs(total - 114) <= 1, `total ${total}`);
-  assert.deepEqual(quantidades, { 1: 20, 0.5: 25, 0.25: 21, 0.1: 29, 0.05: 19 });
+  assert.deepEqual(quantidades, { 1: 20, 0.5: 23, 0.25: 23, 0.1: 29, 0.05: 19 });
 });

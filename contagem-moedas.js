@@ -43,16 +43,36 @@
     const referencia = raiosR1.length ? mediana(raiosR1) : RAIO_R1_RELATIVO * ladoMaior;
     const corte = referencia * CORTE_TAMANHO;
 
-    const quantidades = { 1: 0, 0.5: 0, 0.25: 0, 0.1: 0, 0.05: 0 };
-    circulos.forEach((c, i) => {
+    const valores = circulos.map((c, i) => {
       const grande = c.r >= corte;
-      let valor;
-      if (tipos[i] === 'bicolor') valor = 1;
-      else if (tipos[i] === 'cobre') valor = 0.05;
-      else if (tipos[i] === 'prata') valor = grande ? 0.5 : 0.05;
-      else valor = grande ? 0.25 : 0.1;
-      quantidades[valor] += 1;
+      if (tipos[i] === 'bicolor') return 1;
+      if (tipos[i] === 'cobre') return 0.05;
+      if (tipos[i] === 'dourada') return grande ? 0.25 : 0.1;
+      return null; // prata: decidida abaixo
     });
+
+    // Moedas prateadas: costumam ser R$ 0,50, mas uma prateada solta no meio de um monte de
+    // outro valor (moeda de série antiga, por exemplo) vale o mesmo que as vizinhas. Quem separa
+    // as moedas em montes por valor ganha essa regra de graça.
+    circulos.forEach((c, i) => {
+      if (tipos[i] !== 'prata') return;
+      let prateadasPerto = 0;
+      const votos = {};
+      circulos.forEach((o, j) => {
+        if (j === i || c.x === undefined || Math.hypot(c.x - o.x, c.y - o.y) > c.r * 2.4) return;
+        if (tipos[j] === 'prata') prateadasPerto += 1;
+        else votos[valores[j]] = (votos[valores[j]] || 0) + 1;
+      });
+      const total = Object.values(votos).reduce((a, b) => a + b, 0);
+      if (total > prateadasPerto) {
+        valores[i] = Number(Object.keys(votos).sort((a, b) => votos[b] - votos[a])[0]);
+      } else {
+        valores[i] = c.r >= corte ? 0.5 : 0.05;
+      }
+    });
+
+    const quantidades = { 1: 0, 0.5: 0, 0.25: 0, 0.1: 0, 0.05: 0 };
+    valores.forEach((v) => { quantidades[v] += 1; });
     return { quantidades, referencia };
   }
 
