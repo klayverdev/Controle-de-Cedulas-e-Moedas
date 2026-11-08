@@ -83,11 +83,16 @@
         circulos
           .map((_, j) => j)
           .filter((j) => j !== i && Math.hypot(circulos[i].x - circulos[j].x, circulos[i].y - circulos[j].y) <= (circulos[i].r + circulos[j].r) * fator);
-      // Quem não encosta em ao menos duas moedas procura o monte mais perto, um pouco mais longe.
+      // Moedas que se tocam são do mesmo monte: quem encosta em ao menos duas vota só com elas.
+      // Se não, vale quem está quase encostando; se ainda não, procura o monte mais perto.
       const vizinhas = circulos.map((_, i) => {
-        const coladas = perto(i, 1.4);
-        return coladas.length >= 2 ? coladas : perto(i, 2.1);
+        for (const fator of [1.12, 1.4]) {
+          const achadas = perto(i, fator);
+          if (achadas.length >= 2) return achadas;
+        }
+        return perto(i, 2.1);
       });
+      const iniciais = valores.slice();
       for (let rodada = 0; rodada < 3; rodada += 1) {
         const atuais = valores.slice();
         circulos.forEach((_, i) => {
@@ -95,7 +100,12 @@
           const votos = {};
           vizinhas[i].forEach((j) => { votos[atuais[j]] = (votos[atuais[j]] || 0) + 1; });
           const [melhor, quantos] = Object.entries(votos).sort((x, y) => y[1] - x[1])[0];
-          if (quantos / vizinhas[i].length >= 0.6) valores[i] = Number(melhor);
+          if (quantos / vizinhas[i].length < 0.6) return;
+          const novoValor = Number(melhor);
+          // O tamanho de uma moeda dourada é confiável: a vizinhança não a troca entre R$ 0,10 e
+          // R$ 0,25. Só corrige confusão de cor (cobre clara, prateada enferrujada) ou de prata (sem pista própria).
+          if (tipos[i] === 'dourada' && novoValor !== 0.05 && novoValor !== 0.5 && novoValor !== iniciais[i]) return;
+          valores[i] = novoValor;
         });
       }
     }

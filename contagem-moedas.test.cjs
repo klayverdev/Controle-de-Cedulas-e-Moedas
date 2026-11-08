@@ -72,14 +72,11 @@ test('foto real: acha todas as moedas e acerta os tipos', { timeout: 120000 }, a
   // Contagem do dono da gaveta: 19 / 23 / 23 / 29 / 19 (113). Conferência visual: 114 moedas,
   // sendo a única diferença 1 moeda de R$ 1 a mais (20 visíveis na foto).
   assert.ok(Math.abs(total - 114) <= 1, `total ${total}`);
-  const esperado = { 1: 19, 0.5: 23, 0.25: 23, 0.1: 29, 0.05: 19 };
-  for (const [valor, n] of Object.entries(esperado)) {
-    assert.ok(Math.abs(quantidades[valor] - n) <= 1, `R$ ${valor}: contou ${quantidades[valor]}, esperado ${n}`);
-  }
+  assert.deepEqual(quantidades, { 1: 20, 0.5: 23, 0.25: 23, 0.1: 29, 0.05: 19 });
 });
 
-// Segunda foto, de outra luz e de outro celular. Contagem feita olhando a imagem; a prateada solta
-// com "25" gravado (sem vizinhas) não tem como ser identificada só pela cor e pelo tamanho.
+// Segunda foto, de outra luz e de outro celular. Tem moedas prateadas de série antiga ("25" gravado)
+// soltas ou encostadas em outros montes: elas assumem o valor do monte em que encostam.
 test('foto real 2: acha as moedas e separa os tipos', { timeout: 120000 }, async (t) => {
   let cv;
   let jpeg;
@@ -99,10 +96,7 @@ test('foto real 2: acha as moedas e separa os tipos', { timeout: 120000 }, async
     height: foto.height,
     data: new Uint8ClampedArray(foto.data),
   });
-  assert.ok(Math.abs(total - 112) <= 2, `total ${total}`);
-  assert.equal(quantidades[1], 20);
-  assert.ok(Math.abs(quantidades[0.5] - 21) <= 2, `R$ 0,50: ${quantidades[0.5]}`);
-  assert.ok(Math.abs(quantidades[0.25] - 22) <= 2, `R$ 0,25: ${quantidades[0.25]}`);
-  assert.ok(Math.abs(quantidades[0.1] - 29) <= 2, `R$ 0,10: ${quantidades[0.1]}`);
-  assert.ok(Math.abs(quantidades[0.05] - 19) <= 2, `R$ 0,05: ${quantidades[0.05]}`);
+  // Conferido olhando a foto e lendo os números gravados nas moedas duvidosas.
+  assert.equal(total, 112);
+  assert.deepEqual(quantidades, { 1: 20, 0.5: 21, 0.25: 23, 0.1: 29, 0.05: 19 });
 });
