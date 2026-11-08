@@ -59,56 +59,45 @@
       if (tipos[i] === 'bicolor') return 1;
       if (tipos[i] === 'cobre') return 0.05;
       if (tipos[i] === 'dourada') return grande ? 0.25 : 0.1;
-      return null; // prata: decidida abaixo
+      if (tipos[i] === 'prata') return 0.5;
+      return null;
     });
 
-    // Uma moeda dourada ou de cobre cercada quase só por moedas de outro valor (uma cobre mais
-    // clara no meio das douradas, por exemplo) assume o valor da pilha.
-    const doPrimeiroPasso = valores.slice();
-    circulos.forEach((c, i) => {
-      if (c.x === undefined || (tipos[i] !== 'dourada' && tipos[i] !== 'cobre')) return;
-      const votos = {};
-      let total = 0;
-      let prateadasPerto = 0;
-      circulos.forEach((o, j) => {
-        if (j === i || Math.hypot(c.x - o.x, c.y - o.y) > c.r * 3) return;
-        if (tipos[j] === 'prata') prateadasPerto += 1;
-        if (tipos[j] !== 'dourada' && tipos[j] !== 'cobre') return;
-        votos[doPrimeiroPasso[j]] = (votos[doPrimeiroPasso[j]] || 0) + 1;
-        total += 1;
-      });
-      const [melhor, quantos] = Object.entries(votos).sort((a, b) => b[1] - a[1])[0] || [];
-      if (total >= 2 && quantos / total >= 0.8 && Number(melhor) !== doPrimeiroPasso[i]) valores[i] = Number(melhor);
-      // Prateada enferrujada: parece dourada, mas só tem moedas prateadas em volta.
-      if (total === 0 && prateadasPerto >= 3) valores[i] = 0.5;
-    });
-
-    // Moedas prateadas: costumam ser R$ 0,50, mas uma prateada solta no meio de um monte de
-    // outro valor (moeda de série antiga, por exemplo) vale o mesmo que as vizinhas. Quem separa
-    // as moedas em montes por valor ganha essa regra de graça.
-    circulos.forEach((c, i) => {
-      if (tipos[i] !== 'prata') return;
-      let prateadasPerto = 0;
-      const votos = {};
-      circulos.forEach((o, j) => {
-        if (j === i || c.x === undefined || Math.hypot(c.x - o.x, c.y - o.y) > c.r * 2.4) return;
-        if (tipos[j] === 'prata') prateadasPerto += 1;
-        else votos[valores[j]] = (votos[valores[j]] || 0) + 1;
-      });
-      const total = Object.values(votos).reduce((a, b) => a + b, 0);
-      if (total > prateadasPerto) {
-        valores[i] = Number(Object.keys(votos).sort((a, b) => votos[b] - votos[a])[0]);
-      } else {
-        valores[i] = 0.5; // prateada sem vizinhas de outro valor
-      }
-    });
-
-    // Círculo prateado bem menor que qualquer moeda real: é só o miolo de uma R$ 1 cujo contorno
-    // externo o detector não achou. Só dá para saber com a régua de uma R$ 1 na foto.
+    // Miolo prateado de uma R$ 1 cujo contorno externo não foi achado: círculo prateado bem menor
+    // que qualquer moeda real. Só dá para saber com a régua de uma R$ 1 na foto.
+    const fixas = tipos.map((t) => t === 'bicolor');
     if (raiosR1.length) {
       circulos.forEach((c, i) => {
-        if (tipos[i] === 'prata' && c.r < referencia * MIOLO_MAX) valores[i] = 1;
+        if (tipos[i] === 'prata' && c.r < referencia * MIOLO_MAX) {
+          valores[i] = 1;
+          fixas[i] = true;
+        }
       });
+    }
+
+    // As moedas ficam em montes, e cada monte tem um só valor. Uma moeda cercada por moedas de
+    // outro valor (uma cobre mais clara, uma prateada de série antiga, uma enferrujada) assume
+    // o valor do monte onde está. Repete algumas vezes para o valor se espalhar pelo monte.
+    if (circulos.every((c) => c.x !== undefined)) {
+      const perto = (i, fator) =>
+        circulos
+          .map((_, j) => j)
+          .filter((j) => j !== i && Math.hypot(circulos[i].x - circulos[j].x, circulos[i].y - circulos[j].y) <= (circulos[i].r + circulos[j].r) * fator);
+      // Quem não encosta em ao menos duas moedas procura o monte mais perto, um pouco mais longe.
+      const vizinhas = circulos.map((_, i) => {
+        const coladas = perto(i, 1.4);
+        return coladas.length >= 2 ? coladas : perto(i, 2.1);
+      });
+      for (let rodada = 0; rodada < 3; rodada += 1) {
+        const atuais = valores.slice();
+        circulos.forEach((_, i) => {
+          if (fixas[i] || vizinhas[i].length < 1) return;
+          const votos = {};
+          vizinhas[i].forEach((j) => { votos[atuais[j]] = (votos[atuais[j]] || 0) + 1; });
+          const [melhor, quantos] = Object.entries(votos).sort((x, y) => y[1] - x[1])[0];
+          if (quantos / vizinhas[i].length >= 0.6) valores[i] = Number(melhor);
+        });
+      }
     }
 
     const quantidades = { 1: 0, 0.5: 0, 0.25: 0, 0.1: 0, 0.05: 0 };

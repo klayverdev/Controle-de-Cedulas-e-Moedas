@@ -83,7 +83,7 @@ O botão **Enviar foto** preenche os campos de quantidade a partir de uma imagem
 - **Cédulas** são lidas por IA, na Worker da pasta `worker/` (Cloudflare, plano gratuito).
 - Se a contagem local falhar, a IA lê tudo, como antes.
 
-Para a contagem de moedas funcionar bem: foto de cima, com foco, luz clara e as moedas **espalhadas, sem empilhar** (moeda escondida não é contada). Em teste com duas fotos reais (cerca de 113 moedas cada), o total saiu praticamente exato e cada tipo errou por uma ou duas moedas; moedas de um mesmo valor devem ficar juntas: uma moeda no meio de um monte de outro valor assume o valor da vizinhança. Uma moeda prateada sozinha, longe das outras, é contada como R$ 0,50, mesmo que seja de R$ 0,25 ou R$ 0,05; confira os campos. Testes: `npm install && npm test`.
+Para a contagem de moedas funcionar bem: foto de cima, com foco, luz clara e as moedas **espalhadas, sem empilhar** (moeda escondida não é contada). Em teste com duas fotos reais (cerca de 113 moedas cada), o total saiu praticamente exato e cada tipo errou por uma ou duas moedas; as moedas devem ficar em montes separados, um monte por valor: cada moeda assume o valor do monte onde está (e uma moeda solta vai para o monte mais perto). A cor e o tamanho só decidem quando a moeda está sozinha. Confira os campos. Testes: `npm install && npm test`.
 
 ---
 
