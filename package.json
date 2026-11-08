@@ -1,0 +1,12 @@
+{
+  "name": "controle-de-cedulas-e-moedas",
+  "private": true,
+  "description": "Só para os testes automáticos. O app em si é HTML/CSS/JS puro e não precisa de instalação.",
+  "scripts": {
+    "test": "node --test contagem-moedas.test.cjs"
+  },
+  "devDependencies": {
+    "@techstark/opencv-js": "4.10.0-release.1",
+    "jpeg-js": "0.4.4"
+  }
+}

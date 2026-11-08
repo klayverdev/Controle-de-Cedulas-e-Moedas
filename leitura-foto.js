@@ -80,6 +80,19 @@ async function requestRecognition(blob) {
   return data.quantidades || {};
 }
 
+const COIN_VALUES = ['1', '0.5', '0.25', '0.1', '0.05'];
+
+// Conta as moedas no próprio aparelho (contagem-moedas.js). Se não der, devolve null
+// e a leitura segue só com a IA.
+async function countCoins(file) {
+  if (!window.ContagemMoedas) return null;
+  try {
+    return await window.ContagemMoedas.contarMoedasDoArquivo(file, document);
+  } catch {
+    return null;
+  }
+}
+
 function quantityInputs() {
   return Array.from(document.querySelectorAll('.denomination__input'));
 }
@@ -107,7 +120,14 @@ async function handlePhotoSelected(file) {
       return;
     }
 
-    const quantities = await requestRecognition(blob);
+    // Moedas: contadas aqui no aparelho (cor e tamanho). Cédulas: lidas pela IA da Worker.
+    const [coinsResult, notesResult] = await Promise.allSettled([countCoins(file), requestRecognition(blob)]);
+    const coins = coinsResult.status === 'fulfilled' ? coinsResult.value : null;
+    const notes = notesResult.status === 'fulfilled' ? notesResult.value : null;
+    if (!coins && !notes) throw notesResult.reason;
+
+    const quantities = { ...(notes || {}) };
+    if (coins) COIN_VALUES.forEach((value) => { quantities[value] = coins.quantidades[value] || 0; });
 
     if (hasTypedQuantities() && !window.confirm('Substituir as quantidades que você já digitou pelas da foto?')) {
       showPhotoStatus('Leitura cancelada. Nada foi alterado.', 'info');
@@ -115,7 +135,14 @@ async function handlePhotoSelected(file) {
     }
 
     fillQuantities(quantities);
-    showPhotoStatus('Campos preenchidos pela foto. Confira antes de salvar.', 'success');
+    if (coins && !notes) {
+      showPhotoStatus(
+        `Contei ${coins.total} moedas pela foto, mas não consegui ler as cédulas. Confira antes de salvar.`,
+        'success',
+      );
+    } else {
+      showPhotoStatus('Campos preenchidos pela foto. Confira antes de salvar.', 'success');
+    }
   } catch (error) {
     const message = error.status
       ? PHOTO_ERROR_MESSAGES[error.status] || 'Não foi possível ler a foto.'

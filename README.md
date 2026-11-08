@@ -75,6 +75,18 @@ Os três arquivos de código são separados de propósito. Mesmo sendo um projet
 
 ---
 
+## Leitura por foto
+
+O botão **Enviar foto** preenche os campos de quantidade a partir de uma imagem. Quem salva a entrada ou a retirada continua sendo você, depois de conferir.
+
+- **Moedas** são contadas no próprio aparelho, de graça (`contagem-moedas.js`): o app acha os círculos da foto e decide o valor pela cor (prata, dourada, cobre, bicolor) e pelo tamanho, usando a moeda de R$ 1 como régua. O OpenCV.js (cerca de 8 MB) só é baixado quando você envia a primeira foto.
+- **Cédulas** são lidas por IA, na Worker da pasta `worker/` (Cloudflare, plano gratuito).
+- Se a contagem local falhar, a IA lê tudo, como antes.
+
+Para a contagem de moedas funcionar bem: foto de cima, com foco, luz clara e as moedas **espalhadas, sem empilhar** (moeda escondida não é contada). Em teste com duas fotos reais (cerca de 113 moedas cada), o total saiu praticamente exato e cada tipo errou por uma ou duas moedas; as moedas devem ficar em montes separados, um monte por valor: cada moeda assume o valor do monte onde está (e uma moeda solta vai para o monte mais perto). A cor e o tamanho só decidem quando a moeda está sozinha. Confira os campos. Testes: `npm install && npm test`.
+
+---
+
 ## Limitações conhecidas
 
 - **Os dados existem só enquanto a aba está aberta.** Recarregar a página ou fechar o navegador reinicia tudo, inclusive o histórico e a lixeira de apagados.
